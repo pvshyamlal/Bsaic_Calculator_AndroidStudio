@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">CalculatorApp</string>
+    <string name="initial_display">0</string>
+    <string name="button_1">1</string>
+    <string name="button_2">2</string>
+    <string name="button_add">+</string>
+    <string name="button_equals">=</string>
+</resources>

@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.calculatorapp.ui.theme.CalculatorAppTheme
+//import javax.script.ScriptEngineManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CalculatorScreen() {
     var display by remember { mutableStateOf("0") }
+    val justCalculated = remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -61,40 +63,46 @@ fun CalculatorScreen() {
 
             // First Row: C, %, /
             Row(modifier = Modifier.weight(1f)) {
-                CalculatorButton("C", buttonModifier) { display = "0" }
-                CalculatorButton("%", buttonModifier) { display = appendToDisplay(display, "%") }
-                CalculatorButton("/", buttonModifier) { display = appendToDisplay(display, "/") }
+                CalculatorButton("C", buttonModifier) {
+                    display = "0"
+                    justCalculated.value = false
+                }
+                CalculatorButton("%", buttonModifier) { display = appendOperator(display, "%", justCalculated) }
+                CalculatorButton("/", buttonModifier) { display = appendOperator(display, "/", justCalculated) }
             }
 
             // Second Row: 7, 8, 9, *
             Row(modifier = Modifier.weight(1f)) {
-                CalculatorButton("7", buttonModifier) { display = appendToDisplay(display, "7") }
-                CalculatorButton("8", buttonModifier) { display = appendToDisplay(display, "8") }
-                CalculatorButton("9", buttonModifier) { display = appendToDisplay(display, "9") }
-                CalculatorButton("*", buttonModifier) { display = appendToDisplay(display, "*") }
+                CalculatorButton("7", buttonModifier) { display = appendNumber(display, "7", justCalculated) }
+                CalculatorButton("8", buttonModifier) { display = appendNumber(display, "8", justCalculated) }
+                CalculatorButton("9", buttonModifier) { display = appendNumber(display, "9", justCalculated) }
+                CalculatorButton("*", buttonModifier) { display = appendOperator(display, "*", justCalculated) }
             }
 
             // Third Row: 4, 5, 6, -
             Row(modifier = Modifier.weight(1f)) {
-                CalculatorButton("4", buttonModifier) { display = appendToDisplay(display, "4") }
-                CalculatorButton("5", buttonModifier) { display = appendToDisplay(display, "5") }
-                CalculatorButton("6", buttonModifier) { display = appendToDisplay(display, "6") }
-                CalculatorButton("-", buttonModifier) { display = appendToDisplay(display, "-") }
+                CalculatorButton("4", buttonModifier) { display = appendNumber(display, "4", justCalculated) }
+                CalculatorButton("5", buttonModifier) { display = appendNumber(display, "5", justCalculated) }
+                CalculatorButton("6", buttonModifier) { display = appendNumber(display, "6", justCalculated) }
+                CalculatorButton("-", buttonModifier) { display = appendOperator(display, "-", justCalculated) }
             }
 
             // Fourth Row: 1, 2, 3, +
             Row(modifier = Modifier.weight(1f)) {
-                CalculatorButton("1", buttonModifier) { display = appendToDisplay(display, "1") }
-                CalculatorButton("2", buttonModifier) { display = appendToDisplay(display, "2") }
-                CalculatorButton("3", buttonModifier) { display = appendToDisplay(display, "3") }
-                CalculatorButton("+", buttonModifier) { display = appendToDisplay(display, "+") }
+                CalculatorButton("1", buttonModifier) { display = appendNumber(display, "1", justCalculated) }
+                CalculatorButton("2", buttonModifier) { display = appendNumber(display, "2", justCalculated) }
+                CalculatorButton("3", buttonModifier) { display = appendNumber(display, "3", justCalculated) }
+                CalculatorButton("+", buttonModifier) { display = appendOperator(display, "+", justCalculated) }
             }
 
             // Fifth Row: 0, =, .
             Row(modifier = Modifier.weight(1f)) {
-                CalculatorButton("0", buttonModifier) { display = appendToDisplay(display, "0") }
-                CalculatorButton(".", buttonModifier) { display = appendToDisplay(display, ".") }
-                CalculatorButton("=", buttonModifier) { display = calculateResult(display) }
+                CalculatorButton("0", buttonModifier) { display = appendNumber(display, "0", justCalculated) }
+                CalculatorButton(".", buttonModifier) { display = appendNumber(display, ".", justCalculated) }
+                CalculatorButton("=", buttonModifier) {
+                    display = calculateResult(display)
+                    justCalculated.value = true
+                }
             }
         }
     }
@@ -116,21 +124,82 @@ fun CalculatorButton(
     }
 }
 
-fun appendToDisplay(currentDisplay: String, value: String): String {
-    return if (currentDisplay == "0") value else currentDisplay + value
+// Append number to display, reset if result was just calculated
+fun appendNumber(currentDisplay: String, value: String, justCalculated: MutableState<Boolean>): String {
+    return if (justCalculated.value || currentDisplay == "0") {
+        justCalculated.value = false // Reset the calculation flag
+        value
+    } else {
+        currentDisplay + value
+    }
 }
 
+// Append operator to display without resetting the current result
+fun appendOperator(currentDisplay: String, operator: String, justCalculated: MutableState<Boolean>): String {
+    return if (justCalculated.value) {
+        justCalculated.value = false // Keep the current result and append the operator
+        currentDisplay + operator
+    } else {
+        currentDisplay + operator
+    }
+}
+
+// Calculate the result of the expression
 fun calculateResult(display: String): String {
     return try {
-        val expression = display.replace("%", "/100")
-        val result = eval(expression)
-        result.toString()
+        val sanitizedDisplay = display.replace("%", "/100") // Handle percentage
+        val result = evaluateExpression(sanitizedDisplay)
+        formatResult(result)
     } catch (e: Exception) {
         "Error"
     }
 }
 
-// A simple function to evaluate the expression, consider using external libraries for complex calculations
-fun eval(expression: String): Double {
-    return expression.split("+", "-", "*", "/").map { it.toDouble() }.reduce { acc, next -> acc + next }
+// Evaluate a simple mathematical expression
+fun evaluateExpression(expression: String): Double {
+    val tokens = expression.split("(?<=[-+*/])|(?=[-+*/])".toRegex()) // Split into numbers and operators
+    val numbers = mutableListOf<Double>()
+    val operators = mutableListOf<String>()
+
+    tokens.forEach {
+        when {
+            it.toDoubleOrNull() != null -> numbers.add(it.toDouble())
+            it in listOf("+", "-", "*", "/") -> operators.add(it)
+        }
+    }
+
+    // Evaluate multiplication and division first
+    var i = 0
+    while (i < operators.size) {
+        if (operators[i] == "*" || operators[i] == "/") {
+            val num1 = numbers.removeAt(i)
+            val num2 = numbers.removeAt(i)
+            val result = if (operators[i] == "*") num1 * num2 else num1 / num2
+            numbers.add(i, result)
+            operators.removeAt(i)
+        } else {
+            i++
+        }
+    }
+
+    // Evaluate addition and subtraction
+    i = 0
+    while (i < operators.size) {
+        val num1 = numbers.removeAt(i)
+        val num2 = numbers.removeAt(i)
+        val result = if (operators[i] == "+") num1 + num2 else num1 - num2
+        numbers.add(i, result)
+        operators.removeAt(i)
+    }
+
+    return numbers.first()
+}
+
+// Function to format the result and show decimals only when necessary
+fun formatResult(result: Double): String {
+    return if (result == result.toInt().toDouble()) {
+        result.toInt().toString() // Show as integer if the result is whole number
+    } else {
+        result.toString() // Show as float if it's a decimal number
+    }
 }
